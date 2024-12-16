@@ -24,27 +24,30 @@ enum Strategy {
 
 #[derive(Serialize, Deserialize)]
 struct ObfuscationConfig {
-    /// Number of wires
+    // Number of wires
     n: usize,
-    /// Total steps in strategy 1
+    // Total steps in strategy 1
     total_steps: usize,
-    /// Number of inflationary steps in strategy 2
+    // Number of inflationary steps in strategy 2
     inflationary_stage_steps: usize,
-    /// Number of kneading steps strategy 2
+    // Number of kneading steps strategy 2
     kneading_stage_steps: usize,
-    /// Maximum number of iterations for each convex searching
+    // Maximum number of iterations for each convex searching
     max_convex_iterations: usize,
-    /// Maximum number of iterations for each replacement circuit searching
+    // Maximum number of iterations for each replacement circuit searching
     max_replacement_iterations: usize,
-    /// Strategy used
+    // Strategy used
     starategy: Strategy,
-    /// Checkpoint steps. Checkpoints obfuscated circuit after `checkpoint` number of iterations
+    // Checkpoint steps. Checkpoints obfuscated circuit after `checkpoint` number of iterations
     checkpoint_steps: usize,
-    /// No. of iterations for probabilitic equivalance check.
+    // No. of iterations for probabilitic equivalance check.
     probabilitic_eq_check_iterations: usize,
 }
 
 impl ObfuscationConfig {
+    // This function creates a new `ObfuscationConfig` with parameters specific to Strategy 1.
+    // It initializes the configuration with the given number of wires, total steps, and iteration limits.
+    // The inflationary and kneading stage steps are set to zero as they are not used in Strategy 1.
     fn new_with_strategy1(
         n: usize,
         total_steps: usize,
@@ -66,6 +69,9 @@ impl ObfuscationConfig {
         }
     }
 
+    // This function creates a new `ObfuscationConfig` with parameters specific to Strategy 2.
+    // It initializes the configuration with the given number of wires, inflationary and kneading stage steps, and iteration limits.
+    // The total steps are set to zero as they are not used in Strategy 2.
     fn new_with_strategy2(
         n: usize,
         inflationary_stage_steps: usize,
@@ -88,10 +94,12 @@ impl ObfuscationConfig {
         }
     }
 
+    // This function returns a default `ObfuscationConfig` for Strategy 1 with pre-defined parameters.
     fn default_strategy1() -> Self {
         ObfuscationConfig::new_with_strategy1(64, 100_000, 100_000, 10_000_000, 1000, 1000)
     }
 
+    // This function returns a default `ObfuscationConfig` for Strategy 2 with pre-defined parameters.
     fn default_strategy2() -> Self {
         ObfuscationConfig::new_with_strategy2(64, 100_000, 100_000, 10000, 1000000, 1000, 1000)
     }
@@ -100,17 +108,19 @@ impl ObfuscationConfig {
 #[derive(Serialize, Deserialize)]
 struct ObfuscationJob {
     config: ObfuscationConfig,
-    /// [Strategy 1] Curr no. of total steps
+    // [Strategy 1] Curr no. of total steps
     curr_total_steps: usize,
-    /// [Strategy 2] Curr no. of steps in inflationary stage
+    // [Strategy 2] Curr no. of steps in inflationary stage
     curr_inflationary_stage_steps: usize,
-    /// [Strategy 2] Curr no. of steps in kneading stage
+    // [Strategy 2] Curr no. of steps in kneading stage
     curr_kneading_stage_steps: usize,
     curr_circuit: Circuit<BaseGate<2, u8>>,
     original_circuit: Circuit<BaseGate<2, u8>>,
 }
 
 impl ObfuscationJob {
+    // This function loads an `ObfuscationJob` from a file at the given path.
+    // It deserializes the job from a binary format and logs the job's status.
     fn load(path: impl AsRef<Path>) -> Self {
         let job: ObfuscationJob = bincode::deserialize(&std::fs::read(path).unwrap()).unwrap();
 
@@ -158,6 +168,8 @@ impl ObfuscationJob {
         job
     }
 
+    // This function stores the current state of an `ObfuscationJob` to a file at the given path.
+    // It serializes the job to a binary format and logs the current state of the job.
     fn store(&self, path: impl AsRef<Path>) {
         std::fs::write(&path, bincode::serialize(self).unwrap()).unwrap();
 
@@ -171,6 +183,8 @@ impl ObfuscationJob {
     }
 }
 
+// This function executes Strategy 1 for an obfuscation job.
+// It performs a series of local mixing steps on the circuit, updating the job's state and storing checkpoints as needed.
 fn run_strategy1(job: &mut ObfuscationJob, job_path: String, debug: bool) {
     let original_circuit = job.original_circuit.clone();
     let mut rng = ChaCha8Rng::from_entropy();
@@ -262,6 +276,8 @@ fn run_strategy1(job: &mut ObfuscationJob, job_path: String, debug: bool) {
     }
 }
 
+// This function executes Strategy 2 for an obfuscation job.
+// It consists of two stages: inflationary and kneading, each performing local mixing steps on the circuit.
 fn run_strategy2(job: &mut ObfuscationJob, job_path: String, debug: bool) {
     let original_circuit = job.original_circuit.clone();
     let mut rng = ChaCha8Rng::from_entropy();
@@ -425,6 +441,8 @@ fn run_strategy2(job: &mut ObfuscationJob, job_path: String, debug: bool) {
     }
 }
 
+// This function creates a log4rs configuration for logging to a file.
+// It sets up a file appender with a specified path and pattern, and returns the configuration.
 fn create_log4rs_config(log_path: &str) -> Result<log4rs::Config, Box<dyn Error>> {
     // Define the file appender with the specified path and pattern
     let file_appender = log4rs::append::file::FileAppender::builder()
@@ -445,7 +463,8 @@ fn create_log4rs_config(log_path: &str) -> Result<log4rs::Config, Box<dyn Error>
     Ok(config)
 }
 
-/// Start a new obfuscation job OR continue an existing obfuscation job
+// This function starts a new obfuscation job or continues an existing one.
+// It sets up logging, loads or initializes the job, and runs the appropriate strategy based on the job's configuration.
 fn run_obfuscation() {
     let debug = env::var("DEBUG") // only support `DEBUG=true` or `DEBUG=false`
         .ok()
@@ -522,8 +541,7 @@ fn run_obfuscation() {
     }
 }
 
-/// Verifies that a obfuscation job is correct by checking whether it is obfuscated circuit
-/// is functionally equivalent to the original circuit
+// This function verifies the correctness of an obfuscation job by checking the functional equivalence of the obfuscated circuit to the original circuit.
 fn run_job_verification() {
     let job_path = args().nth(2).expect("Missing obfuscated circuit path");
     std::fs::exists(&job_path).expect("Missing obfuscated circuit at path");
@@ -541,7 +559,7 @@ fn run_job_verification() {
     println!("Obfsucated job verification with {iterations} iterations is success");
 }
 
-/// Checks whether file at `file_path` is `json`
+// This function checks whether a file at the given path is a JSON file by examining its extension.
 fn is_json_file(file_path: &str) -> bool {
     Path::new(file_path)
         .extension()
@@ -549,7 +567,8 @@ fn is_json_file(file_path: &str) -> bool {
         .map_or(false, |ext| ext.eq_ignore_ascii_case("json"))
 }
 
-/// Takes Json path to two circuit files ands check whether they are funtionally equivalent
+// This function checks the functional equivalence of two circuits provided as JSON files.
+// It deserializes the circuits, runs a verification process, and prints the result.
 fn run_circuits_json_equivalence_check() {
     let c0: Circuit<BaseGate<2, u8>> = {
         let c0_path = args().nth(2).expect("Missing circuit 1 json file at path");
@@ -580,7 +599,7 @@ fn run_circuits_json_equivalence_check() {
     println!("circuit 0, circuit 1 equivalance check with {iterations} iterations is success");
 }
 
-/// Verifies whether 2 circuits are equivalent
+// This function verifies whether two circuits are equivalent by running a probabilistic equivalence check for a specified number of iterations.
 fn run_verification(
     c0: &Circuit<BaseGate<2, u8>>,
     c1: &Circuit<BaseGate<2, u8>>,
@@ -641,6 +660,8 @@ impl From<&PrettyCircuit> for Circuit<BaseGate<2, u8>> {
     }
 }
 
+// This function converts a binary circuit file to a JSON format.
+// It reads the binary file, deserializes the circuit, and writes it to a JSON file.
 fn run_convert_circuit_to_json() {
     let input_path = args().nth(2).expect("Missing binary circuit input path");
     let output_path = args().nth(3).expect("[2] Missing json circuit output path");
@@ -655,6 +676,8 @@ fn run_convert_circuit_to_json() {
     .unwrap();
 }
 
+// This function converts an obfuscation job to a JSON format.
+// It loads the job from a binary file and writes the current circuit to a JSON file.
 fn run_convert_job_to_json() {
     let input_path = args().nth(2).expect("[1] Missing job input path");
     let output_path = args().nth(3).expect("[2] Missing json circuit output path");
@@ -668,6 +691,8 @@ fn run_convert_job_to_json() {
     .unwrap();
 }
 
+// This function evaluates a circuit with a given set of binary inputs.
+// It reads the circuit from a JSON file, checks the input length, runs the circuit, and prints the output.
 fn run_evaluate_circuit() {
     let circuit_path = args().nth(2).expect("Missing json circuit input path");
     assert!(is_json_file(&circuit_path));
@@ -700,6 +725,8 @@ fn run_evaluate_circuit() {
     println!("{}", inputs.into_iter().map(|bit| bit as u8).join(","))
 }
 
+// This is the main function that determines which action to perform based on command-line arguments.
+// It can run obfuscation, job verification, circuit conversion, equivalence checks, or circuit evaluation.
 fn main() {
     let action = args()
         .nth(1)

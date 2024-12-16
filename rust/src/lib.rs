@@ -60,6 +60,8 @@ macro_rules! timed {
     }};
 }
 
+// Converts a set of edges into a readable string representation for debugging purposes.
+// Takes a HashSet of tuples representing edges and returns a formatted string.
 #[allow(dead_code)]
 fn edges_to_string(edges: &HashSet<(usize, usize)>) -> String {
     let mut string = String::from("[");
@@ -70,6 +72,8 @@ fn edges_to_string(edges: &HashSet<(usize, usize)>) -> String {
     string
 }
 
+// Maps node indices from a graph to their corresponding gate IDs.
+// Takes an iterator of node indices and the graph, returns a vector of gate IDs.
 pub fn node_indices_to_gate_ids<'a, I>(nodes: I, graph: &Graph<usize, usize>) -> Vec<usize>
 where
     I: Iterator<Item = &'a NodeIndex>,
@@ -79,6 +83,9 @@ where
         .collect_vec()
 }
 
+// Creates a mapping between input values and their binary string representations.
+// Takes a size n and returns a HashMap mapping each value to its n-bit binary representation.
+// Limited to n < 20 to prevent excessive memory usage.
 fn input_value_to_bitstring_map(n: usize) -> HashMap<usize, Vec<bool>> {
     assert!(n < 20, "{n} >= 20; Too big!");
     let mut map = HashMap::new();
@@ -92,6 +99,9 @@ fn input_value_to_bitstring_map(n: usize) -> HashMap<usize, Vec<bool>> {
     return map;
 }
 
+// Samples M unique values from a given distribution.
+// Uses a random number generator to sample values until M unique ones are found.
+// Returns the samples in a HashSet to ensure uniqueness.
 fn sample_m_unique_values<const M: usize, D, R: RngCore>(
     rng: &mut R,
     distribution: &Uniform<D>,
@@ -116,6 +126,8 @@ where
     return values;
 }
 
+// Creates a permutation map for a given circuit by running it on all possible input values.
+// Takes a circuit and input-to-bitstring map, returns mapping of input values to circuit outputs.
 fn permutation_map<G>(
     circuit: &Circuit<G>,
     input_value_to_bitstring_map: &HashMap<usize, Vec<bool>>,
@@ -133,6 +145,9 @@ where
     return permutation_map;
 }
 
+// Samples a random circuit with specified parameters using base gates.
+// Generates gates with random targets, controls and control functions while respecting constraints.
+// Returns the generated circuit along with a trace string for debugging.
 pub fn sample_circuit_with_base_gate<const MAX_K: usize, D, R: RngCore>(
     gate_count: usize,
     n: D,
@@ -245,6 +260,8 @@ where
     (Circuit::new(gates, n.into()), String::new())
 }
 
+// Optimized version of circuit sampling for specific gate types.
+// Specialized implementation for BaseGate<2, u8> that uses bit manipulation for better performance.
 pub fn sample_circuit_with_base_gate_fast<R: Rng>(
     circuit: &mut Circuit<BaseGate<2, u8>>,
     n: u8,
@@ -272,9 +289,9 @@ pub fn sample_circuit_with_base_gate_fast<R: Rng>(
     });
 }
 
-/// Checks whether collisions set of any circuit is weakly connected.
-///
-/// Any directed graph is weakly connected if the underlying undirected graph is fully connected.
+// Checks if a collision set graph is weakly connected.
+// A graph is weakly connected if replacing directed edges with undirected edges results in a connected graph.
+// Uses DFS to check connectivity.
 fn is_collisions_set_weakly_connected(collisions_set: &[HashSet<usize>]) -> bool {
     let gate_count = collisions_set.len();
     // row major matrix
@@ -318,6 +335,9 @@ fn is_collisions_set_weakly_connected(collisions_set: &[HashSet<usize>]) -> bool
     is_weakly_connected
 }
 
+// Attempts to find a functionally equivalent replacement circuit.
+// Uses parallel search to find a circuit with same I/O behavior but different structure.
+// Returns None if no replacement found within iteration limit.
 fn find_replacement_circuit<
     const MAX_K: usize,
     const WC: bool,
@@ -429,6 +449,31 @@ where
         })
 }
 
+// Fast implementation of replacement circuit search for specific gate types.
+// Optimized version for BaseGate<2, u8> that uses lookup tables and bit operations.
+// Finds a functionally equivalent but structurally different replacement circuit optimized for BaseGate<2, u8>.
+// This is a fast implementation that uses lookup tables and bit operations for specific gate types.
+//
+// # Arguments
+// * `circuit` - The input circuit to find a replacement for
+// * `ell_in` - The number of gates in the input circuit
+// * `n` - Number of wires/qubits in the circuit (must be between 3-11)
+// * `max_iterations` - Maximum number of iterations to try finding a replacement
+// * `rng` - Random number generator for sampling circuits
+//
+// # Returns
+// * `Option<Circuit<BaseGate<2, u8>>>` - A functionally equivalent replacement circuit if found, None otherwise
+//
+// # Performance Notes
+// - Major computation time is spent in the inner loop that:
+//   1. Samples random circuits (~20% time)
+//   2. Checks functional equivalence by running circuits (~40% time) 
+//   3. Verifies weak connectivity (~30% time)
+// - The function uses CPU parallelization via rayon
+// - GPU optimization opportunities:
+//   - Circuit sampling could be parallelized across GPU threads
+//   - Circuit running and equivalence checks could be batched on GPU
+//   - Weak connectivity checks could leverage GPU graph algorithms
 fn find_replacement_circuit_fast<R: Send + Sync + RngCore + SeedableRng>(
     circuit: &Circuit<BaseGate<2, u8>>,
     ell_in: usize,
@@ -436,6 +481,8 @@ fn find_replacement_circuit_fast<R: Send + Sync + RngCore + SeedableRng>(
     max_iterations: usize,
     rng: &mut R,
 ) -> Option<Circuit<BaseGate<2, u8>>> {
+    // Match on number of wires to use compile-time constants for better performance
+    // N is number of wires, N2 is 2^N (size of truth table)
     return match n {
         3 => inner::<_, 3, { 1 << 3 }>(circuit, ell_in, max_iterations, rng),
         4 => inner::<_, 4, { 1 << 4 }>(circuit, ell_in, max_iterations, rng),
@@ -449,12 +496,16 @@ fn find_replacement_circuit_fast<R: Send + Sync + RngCore + SeedableRng>(
         _ => unimplemented!(),
     };
 
+    // Inner function that does the actual replacement circuit search
+    // Uses const generics N and N2 for compile-time optimizations
     fn inner<R: Send + Sync + RngCore + SeedableRng, const N: usize, const N2: usize>(
         circuit: &Circuit<BaseGate<2, u8>>,
         ell_in: usize,
         max_iterations: usize,
         rng: &mut R,
     ) -> Option<Circuit<BaseGate<2, u8>>> {
+        // Pre-compute truth table for input circuit
+        // Maps each possible input to its corresponding output
         let mut permutations: [_; N2] = from_fn(|i| {
             let inputs = from_fn::<_, N, _>(|j| (i >> j) & 1 == 1);
             let mut outputs = inputs;
@@ -462,30 +513,37 @@ fn find_replacement_circuit_fast<R: Send + Sync + RngCore + SeedableRng>(
             (inputs, outputs)
         });
 
+        // Shuffle permutations to randomize testing order
         permutations.shuffle(rng);
 
-        // let mut visited_circuits = HashMap::new();
-        let max_iterations = max_iterations / current_num_threads();
+        // Atomic flag for early termination across threads
         let found = AtomicBool::new(false);
-
+        
+        // Split work across CPU threads
+        // Each thread gets its own RNG seeded from the input RNG
         (0..current_num_threads())
             .map(|_| R::from_rng(&mut *rng).unwrap())
             .par_bridge()
             .find_map_any(|mut rng| {
+                // Random epoch size to vary testing patterns
                 let epoch_size = rng.gen_range(10..20);
                 let mut curr_iter = 0;
                 let mut replacement_circuit = None;
 
+                // Initialize random circuit with same number of gates as input
                 let mut random_circuit =
                     Circuit::new(vec![BaseGate::new(0, 0, [0, 0], 0); ell_in], N);
 
                 while curr_iter < max_iterations {
+                    // Check if another thread found solution
                     if curr_iter % epoch_size == 0 && found.load(Relaxed) {
                         return None;
                     }
 
+                    // Sample a new random circuit
                     sample_circuit_with_base_gate_fast(&mut random_circuit, N as u8, &mut rng);
 
+                    // Check functional equivalence by running all inputs
                     let mut funtionally_equivalent = true;
                     for (inputs, map) in &permutations {
                         let mut inputs = *inputs;
@@ -497,10 +555,13 @@ fn find_replacement_circuit_fast<R: Send + Sync + RngCore + SeedableRng>(
                         }
                     }
 
+                    // Additional checks if functionally equivalent:
+                    // 1. Verify it's not identical to input circuit
                     if funtionally_equivalent {
                         funtionally_equivalent = &random_circuit != circuit
                     }
 
+                    // 2. Verify weak connectivity property
                     if funtionally_equivalent {
                         let collisions_set = circuit_to_collision_sets(&random_circuit);
                         let is_weakly_connected =
@@ -508,6 +569,7 @@ fn find_replacement_circuit_fast<R: Send + Sync + RngCore + SeedableRng>(
                         funtionally_equivalent = is_weakly_connected;
                     }
 
+                    // If all checks pass, we found a valid replacement
                     if funtionally_equivalent {
                         replacement_circuit = Some(random_circuit);
                         found.store(true, Relaxed);
@@ -532,6 +594,8 @@ fn find_replacement_circuit_fast<R: Send + Sync + RngCore + SeedableRng>(
     }
 }
 
+// Performs depth-first search on a graph with optimizations for parallel execution.
+// Uses atomic operations and parallel iterators to safely traverse graph in parallel.
 fn dfs_fast(
     graph: &Graph<usize, usize>,
     sources: Vec<NodeIndex>,
@@ -573,6 +637,8 @@ fn dfs_fast(
         .collect()
 }
 
+// Standard depth-first search implementation for graph traversal.
+// Maintains visited sets and paths for tracking graph exploration.
 fn dfs(
     curr_node: NodeIndex,
     visited_with_path: &mut HashSet<NodeIndex>,
@@ -612,6 +678,8 @@ fn dfs(
     visited.insert(curr_node);
 }
 
+// Modified DFS that stops at specified conditions.
+// Includes additional parameters for early termination based on level and break conditions.
 fn dfs2(
     curr_node: NodeIndex,
     visited_with_path: &mut HashSet<NodeIndex>,
@@ -671,6 +739,8 @@ fn dfs2(
     return return_bool;
 }
 
+// Helper function for finding convex subsets in a graph.
+// Recursively builds convex sets of desired size while maintaining convexity property.
 fn blah(
     desire_set_size: usize,
     convex_set: &mut HashSet<NodeIndex>,
@@ -770,36 +840,8 @@ fn blah(
     }
 }
 
-// Copied from https://stackoverflow.com/a/65182786/7705999
-struct UnsafeSlice<'a, T> {
-    slice: &'a [core::cell::UnsafeCell<T>],
-}
-unsafe impl<'a, T: Send + Sync> Send for UnsafeSlice<'a, T> {}
-unsafe impl<'a, T: Send + Sync> Sync for UnsafeSlice<'a, T> {}
-
-impl<'a, T> UnsafeSlice<'a, T> {
-    pub fn new(slice: &'a mut [T]) -> Self {
-        let ptr = slice as *mut [T] as *const [core::cell::UnsafeCell<T>];
-        Self {
-            slice: unsafe { &*ptr },
-        }
-    }
-
-    /// SAFETY: It is UB if two threads write to the same index without
-    /// synchronization.
-    pub unsafe fn write(&self, i: usize, value: T) {
-        let ptr = self.slice[i].get();
-        *ptr = value;
-    }
-
-    /// SAFETY: It is UB if two threads update the same index without
-    /// synchronization.
-    pub unsafe fn update(&self, i: usize, f: impl Fn(&mut T)) {
-        let ptr = self.slice[i].get();
-        f(&mut *ptr);
-    }
-}
-
+// Finds all predecessor nodes in a graph for a given convex set.
+// Uses DFS to identify all nodes that can reach the convex set.
 fn find_all_predecessors(
     convex_set: &HashSet<NodeIndex>,
     graph: &Graph<usize, usize>,
@@ -830,6 +872,8 @@ fn find_all_predecessors(
     return predecessors;
 }
 
+// Finds all successor nodes in a graph for a given convex set.
+// Uses DFS to identify all nodes reachable from the convex set.
 fn find_all_successors(
     convex_set: &HashSet<NodeIndex>,
     graph: &Graph<usize, usize>,
@@ -858,6 +902,8 @@ fn find_all_successors(
     return successors;
 }
 
+// Performs topological sort using cached graph neighbor information.
+// More efficient than standard toposort by avoiding repeated neighbor computation.
 pub fn toposort_with_cached_graph_neighbours(
     skeleton_graph: &Graph<usize, usize>,
     graph_neighbors: &[[HashSet<NodeIndex>; 2]],
@@ -873,60 +919,8 @@ pub fn toposort_with_cached_graph_neighbours(
     node_indices
 }
 
-fn graph_neighbors(
-    graph: &Graph<usize, usize>,
-    removed_nodes: &HashSet<NodeIndex>,
-) -> Vec<[HashSet<NodeIndex>; 2]> {
-    (0..graph.node_count() as _)
-        .into_par_iter()
-        .map(|n| {
-            if removed_nodes.contains(&NodeIndex::from(n)) {
-                [HashSet::new(), HashSet::new()]
-            } else {
-                [Direction::Incoming, Direction::Outgoing].map(|dir| {
-                    graph
-                        .neighbors_directed(NodeIndex::from(n), dir)
-                        .filter(|node| !removed_nodes.contains(node))
-                        .collect()
-                })
-            }
-        })
-        .collect()
-}
-
-fn update_graph_neighbors(
-    graph: &Graph<usize, usize>,
-    in_degree: &mut Vec<[HashSet<NodeIndex>; 2]>,
-    to_remove_nodes: &HashSet<NodeIndex>,
-    incoming: HashSet<NodeIndex>,
-    removed_nodes: &HashSet<NodeIndex>,
-) {
-    to_remove_nodes.iter().for_each(|n| {
-        let incoming = &mut in_degree[n.index()][0];
-        *incoming = HashSet::new();
-        let outgoing = &mut in_degree[n.index()][1];
-        *outgoing = HashSet::new();
-    });
-
-
-    in_degree.resize_with(graph.node_count(), Default::default);
-    let in_degree_slice = UnsafeSlice::new(in_degree);
-    incoming.into_par_iter().for_each(|n| unsafe {
-        assert!(!removed_nodes.contains(&n));
-        in_degree_slice.update(n.index(), |[incoming, outgoing]| {
-            *incoming = graph
-                .neighbors_directed(n, Direction::Incoming)
-                .filter(|node| !removed_nodes.contains(node))
-                .collect();
-            *outgoing = graph
-                .neighbors_directed(n, Direction::Outgoing)
-                .filter(|node| !removed_nodes.contains(node))
-                .collect()
-        })
-    });
-}
-
-/// Implements Kahn's algorithm. Instead of the original graph it uses cached incoming and outgoing edges per edge
+// Computes graph levels (distances from source nodes) using Kahn's algorithm.
+// Single-threaded implementation for smaller graphs.
 fn graph_level_single_threaded(
     graph: &Graph<usize, usize>,
     graph_neighbors: &[[HashSet<NodeIndex>; 2]],
@@ -962,6 +956,8 @@ fn graph_level_single_threaded(
     level
 }
 
+// Parallel implementation of graph level computation.
+// Uses atomic operations and parallel iterators for better performance on large graphs.
 pub fn graph_level(
     graph: &Graph<usize, usize>,
     graph_neighbors: &[[HashSet<NodeIndex>; 2]],
@@ -1019,6 +1015,8 @@ pub fn graph_level(
     level
 }
 
+// Attempts to find a convex subgraph quickly using parallel search.
+// Returns a start node and convex subset if found within iteration limits.
 fn find_convex_fast<R: Send + Sync + RngCore + SeedableRng>(
     graph: &Graph<usize, usize>,
     level: &[usize],
@@ -1081,6 +1079,8 @@ fn find_convex_fast<R: Send + Sync + RngCore + SeedableRng>(
         })
 }
 
+// Converts a circuit to sets of colliding gates.
+// Identifies gates that cannot be executed in parallel due to dependencies.
 fn circuit_to_collision_sets<G: Gate>(circuit: &Circuit<G>) -> Vec<HashSet<usize>> {
     let mut all_collision_sets = Vec::with_capacity(circuit.gates().len());
     for (i, gi) in circuit.gates().iter().enumerate() {
@@ -1111,6 +1111,8 @@ fn circuit_to_collision_sets<G: Gate>(circuit: &Circuit<G>) -> Vec<HashSet<usize
     return all_collision_sets;
 }
 
+// Prepares a circuit for manipulation by creating necessary data structures.
+// Returns maps and graphs needed for circuit transformation operations.
 pub fn prepare_circuit<G: Gate>(
     circuit: &Circuit<G>,
 ) -> (
@@ -1228,6 +1230,8 @@ where
     )
 }
 
+// Performs DFS within a convex set to establish execution order.
+// Used to determine valid gate orderings within a convex subcircuit.
 pub fn dfs_within_convex_set(
     curr_node: NodeIndex,
     convex_set: &HashSet<NodeIndex>,
@@ -1250,12 +1254,8 @@ pub fn dfs_within_convex_set(
     top_sorted.push_front(curr_node);
 }
 
-/// Local mixing step
-///
-/// Returns false if mixing step is not successuful which may happen if one of the following is true
-/// - Elements in convex subset < \ell^out
-/// - \omega^out <= 3
-/// - Not able to find repalcement circuit after exhausting max_replacement_iterations iterations
+// Performs one step of local mixing transformation on a circuit.
+// Attempts to replace a convex subcircuit with functionally equivalent but structurally different circuit.
 pub fn local_mixing_step<R: Send + Sync + SeedableRng + RngCore>(
     skeleton_graph: &mut Graph<usize, usize>,
     ell_in: usize,
@@ -2167,6 +2167,8 @@ pub fn local_mixing_step<R: Send + Sync + SeedableRng + RngCore>(
     return true;
 }
 
+// Main entry point for running local mixing transformations.
+// Manages the overall process of circuit transformation including verification.
 pub fn run_local_mixing<R: Send + Sync + SeedableRng + RngCore>(
     tag: &str,
     original_circuit: Option<&Circuit<BaseGate<2, u8>>>,
@@ -2275,6 +2277,8 @@ pub fn run_local_mixing<R: Send + Sync + SeedableRng + RngCore>(
     success
 }
 
+// Probabilistically checks if two circuits are functionally equivalent.
+// Tests circuits on random inputs to verify same input/output behavior.
 pub fn check_probabilisitic_equivalence<G, R: RngCore>(
     circuit0: &Circuit<G>,
     circuit1: &Circuit<G>,

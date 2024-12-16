@@ -6,6 +6,12 @@ use rand::{seq::SliceRandom, RngCore};
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, iter::repeat_with};
 
+// The Gate trait defines the core interface for quantum circuit gates.
+// It specifies the required functionality for any gate implementation including:
+// - Input type that the gate operates on
+// - Target qubit/wire that the gate modifies
+// - Control qubits/wires that determine gate activation
+// - Methods for running the gate operation and checking collisions
 pub trait Gate {
     type Input: ?Sized;
     type Target;
@@ -18,6 +24,13 @@ pub trait Gate {
     fn id(&self) -> usize;
 }
 
+// BaseGate represents a generic quantum gate with N control wires and a target wire.
+// It includes:
+// - A unique identifier for the gate
+// - Target wire that the gate modifies
+// - Array of N control wires that determine gate activation
+// - Control function that defines the gate's behavior based on control wire states
+// The type parameter D represents the wire identifier type (typically u8 or usize)
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "D: Serialize, [D; N]: Serialize",
@@ -30,6 +43,10 @@ pub struct BaseGate<const N: usize, D> {
     control_func: u8,
 }
 
+// Implementation of basic functionality for BaseGate
+// Provides methods for creating new gates and accessing gate properties
+// The N_CONTROL_FUNC constant defines the number of possible control functions
+// Currently only implemented for 2-control gates (N=2) with 16 possible functions
 impl<const N: usize, D> BaseGate<N, D> {
     pub const N_CONTROL_FUNC: u8 = {
         match N {
@@ -74,6 +91,10 @@ impl<const N: usize, D> BaseGate<N, D> {
     }
 }
 
+// Implementation of the Gate trait for BaseGate
+// Defines how the gate operates on input bits and interacts with other gates
+// The run method implements the actual quantum operation based on control function
+// The check_collision method determines if two gates can operate simultaneously
 impl<const N: usize, D> Gate for BaseGate<N, D>
 where
     D: Into<usize> + Copy + PartialEq,
@@ -124,12 +145,19 @@ where
     }
 }
 
+// Circuit represents a quantum circuit composed of a sequence of gates
+// It maintains:
+// - A vector of gates in execution order
+// - The total number of wires/qubits in the circuit
+// Gates can be of any type that implements the Gate trait
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Circuit<G> {
     gates: Vec<G>,
     n: usize,
 }
 
+// Implementation of circuit execution functionality
+// Provides the run method that applies all gates in sequence to the input state
 impl<G> Circuit<G>
 where
     G: Gate<Input = [bool]>,
@@ -141,6 +169,11 @@ where
     }
 }
 
+// Implementation of circuit manipulation functionality
+// Provides methods for:
+// - Splitting a circuit at a specific gate
+// - Creating a circuit from a topologically sorted graph representation
+// - Basic circuit property access
 impl<G> Circuit<G>
 where
     G: Clone,
@@ -240,6 +273,10 @@ where
     }
 }
 
+// Base2GateControlFunc enumerates all possible 2-input boolean functions
+// These represent the different types of quantum operations possible with 2 control wires
+// Each variant corresponds to a specific truth table for the operation
+// The functions include common operations like AND, OR, XOR as well as their negations
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Base2GateControlFunc {
@@ -306,6 +343,11 @@ impl Base2GateControlFunc {
     }
 }
 
+// Implementation of specialized circuit generation for 2-control gates
+// Includes:
+// - A set of predefined inflationary gates for circuit transformation
+// - Methods for generating multi-stage cipher circuits
+// - Utility functions for circuit construction and manipulation
 impl Circuit<BaseGate<2, u8>> {
     pub const INFLATIONARY_GATES: [(usize, [(u8, [u8; 2], Base2GateControlFunc); 4]); 144] = {
         const ENCODED: [usize; 144] = [
@@ -428,6 +470,10 @@ impl Circuit<BaseGate<2, u8>> {
     }
 }
 
+// Test module containing verification tests for:
+// - Inflationary gate implementations
+// - Multi-stage cipher generation
+// - Circuit transformation correctness
 #[cfg(test)]
 mod test {
     use crate::circuit::{Base2GateControlFunc, BaseGate, Circuit};
